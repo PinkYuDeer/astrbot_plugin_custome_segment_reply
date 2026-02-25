@@ -10,8 +10,8 @@ from astrbot.api.all import Context, Star, register, AstrBotConfig, logger
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.api.message_components import Plain
 
-@register("astrbot_plugin_custome_segment_reply", "LinJohn8", "通过自定义规则实现本地智能分段回复", "1.0.0")
-class CustomSegmentReply(Star):
+@register("astrbot_plugin_custome_segment_reply", "LinJohn8", "自定义规则本地智能分段", "1.0.0")
+class CustomSegmentReplyPlugin(Star):
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         # 确保 config 存在
