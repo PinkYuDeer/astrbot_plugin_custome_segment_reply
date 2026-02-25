@@ -1,6 +1,7 @@
 import asyncio
 import random
 import json
+from typing import List  # ✅ 新增：兼容 Python 3.8 的类型提示
 
 # ==================== 核心导入 (完全对齐你的可用环境) ====================
 from astrbot.api.event import filter as event_filter
@@ -9,10 +10,8 @@ from astrbot.api.all import Context, Star, register, AstrBotConfig, logger
 from astrbot.core.message.message_event_result import MessageChain
 from astrbot.api.message_components import Plain
 
-# 注意：去掉了第五个参数(URL链接)，防止旧版 API 不兼容报错
 @register("astrbot_plugin_custome_segment_reply", "LinJohn8", "通过自定义规则实现本地智能分段回复", "1.0.0")
 class CustomSegmentReply(Star):
-    # 注意：配置类型改为了 AstrBotConfig
     def __init__(self, context: Context, config: AstrBotConfig):
         super().__init__(context)
         # 确保 config 存在
@@ -81,7 +80,6 @@ class CustomSegmentReply(Star):
             self.delay_min = 1.0
             self.delay_max = 3.0
 
-    # 注意：使用 event_filter 别名进行拦截
     @event_filter.on_decorating_result()
     async def handle_segment_reply(self, event: AstrMessageEvent):
         result = event.get_result()
@@ -130,7 +128,8 @@ class CustomSegmentReply(Star):
             logger.error(f"本地规则分段异常，发送原消息。失败原因：{str(e)}")
             return
 
-    def segment_text_by_rules(self, text: str) -> list[str]:
+    # ✅ 修复：使用 List[str] 替代 list[str]，完美兼容 Python 3.8
+    def segment_text_by_rules(self, text: str) -> List[str]:
         segments = []
         remaining_text = text.strip()
 
