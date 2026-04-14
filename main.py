@@ -1,6 +1,7 @@
 import asyncio
 import random
 import json
+import re
 from typing import List  # ✅ 新增：兼容 Python 3.8 的类型提示
 
 # ==================== 核心导入 (完全对齐你的可用环境) ====================
@@ -93,6 +94,26 @@ class CustomSegmentReplyPlugin(Star):
             self.delay_min = 1.0
             self.delay_max = 3.0
 
+        if self.delay_min > self.delay_max:
+            self.delay_min, self.delay_max = self.delay_max, self.delay_min
+
+        # 8. 延迟模式配置：fixed / random / per_char / smart
+        mode = str(self.config.get("delay_type", "random")).strip().lower()
+        supported_modes = {"fixed", "random", "per_char", "smart"}
+        self.delay_type = mode if mode in supported_modes else "random"
+
+        try:
+            self.fixed_delay_seconds = float(self.config.get("fixed_delay_seconds", 1.0))
+        except (ValueError, TypeError):
+            self.fixed_delay_seconds = 1.0
+        self.fixed_delay_seconds = max(0.0, self.fixed_delay_seconds)
+
+        try:
+            self.per_char_delay_seconds = float(self.config.get("per_char_delay_seconds", 0.08))
+        except (ValueError, TypeError):
+            self.per_char_delay_seconds = 0.08
+        self.per_char_delay_seconds = max(0.0, self.per_char_delay_seconds)
+
     @event_filter.on_decorating_result()
     async def handle_segment_reply(self, event: AstrMessageEvent):
         result = event.get_result()
@@ -129,7 +150,7 @@ class CustomSegmentReplyPlugin(Star):
             
             for i, segment in enumerate(segments):
                 if i > 0:
-                    delay = random.uniform(self.delay_min, self.delay_max)
+                    delay = self._calculate_delay(segment)
                     await asyncio.sleep(delay)
                 await event.send(MessageChain().message(segment))
             
@@ -255,6 +276,50 @@ class CustomSegmentReplyPlugin(Star):
                 remaining_text = remaining_text[best_split_index + split_char_len:].strip()
 
         return segments
+
+    @staticmethod
+    def _gauss_clamped(min_v: float, max_v: float) -> float:
+        """正态分布随机，并限制在区间内。"""
+        if min_v > max_v:
+            min_v, max_v = max_v, min_v
+        if min_v == max_v:
+            return min_v
+        mean = (min_v + max_v) / 2
+        std = max((max_v - min_v) / 6, 1e-6)
+        value = random.gauss(mean, std)
+        return max(min_v, min(max_v, value))
+
+    def _calculate_delay(self, segment: str) -> float:
+        """根据配置计算当前分段发送前延迟（单位：秒）。"""
+        if self.delay_type == "fixed":
+            return self.fixed_delay_seconds
+
+        if self.delay_type == "per_char":
+            return max(0.0, self.per_char_delay_seconds * len(segment))
+
+        if self.delay_type == "smart":
+            # 基础间隔：每字数 random.gauss(80ms, 30ms)
+            per_char_ms = max(10.0, random.gauss(80.0, 30.0))
+            base_delay = (per_char_ms * len(segment)) / 1000.0
+
+            # 符号修正：
+            # 1) 每个感叹号（! / ！）减去 100~300ms（正态并裁剪）
+            exclam_count = segment.count("!") + segment.count("！")
+            exclam_reduce = 0.0
+            for _ in range(exclam_count):
+                exclam_reduce += self._gauss_clamped(0.1, 0.3)
+
+            # 2) 省略号/破折号（... / 。。。 / …… / —— 等）每组增加 400~800ms（正态并裁剪）
+            pause_like_pattern = r"(?:\.{3,}|。{3,}|…{2,}|-{2,}|—{2,}|－{2,})"
+            pause_like_count = len(re.findall(pause_like_pattern, segment))
+            pause_add = 0.0
+            for _ in range(pause_like_count):
+                pause_add += self._gauss_clamped(0.4, 0.8)
+
+            return max(0.0, base_delay - exclam_reduce + pause_add)
+
+        # random（默认）：采用正态分布，并限制在 random_delay_range 内
+        return self._gauss_clamped(self.delay_min, self.delay_max)
 
     async def _save_to_conversation_history(self, event: AstrMessageEvent, content: str):
         try:
