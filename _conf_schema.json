@@ -72,6 +72,12 @@
         "default": true,
         "hint": "开启则断句后保留该标点（推荐）；关闭则断句后直接丢弃该标点。"
     },
+    "extend_to_trailing_symbols": {
+        "description": "分段符后顺延连续符号",
+        "type": "bool",
+        "default": true,
+        "hint": "开启后，命中分段符时会继续顺延至最后的连续符号（如“？……”）直到遇到文字；关闭则仅命中的分段符本身。"
+    },
     "exclude_keywords": {
         "description": "无需分段的关键词列表",
         "type": "list",

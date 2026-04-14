@@ -2,6 +2,7 @@ import asyncio
 import random
 import json
 import re
+import unicodedata
 from typing import List  # ✅ 新增：兼容 Python 3.8 的类型提示
 
 # ==================== 核心导入 (完全对齐你的可用环境) ====================
@@ -77,6 +78,7 @@ class CustomSegmentReplyPlugin(Star):
             self.split_symbols = ["\n\n", "\n", "。", "！", "？"]
 
         self.keep_symbol = bool(self.config.get("keep_symbol", True))
+        self.extend_to_trailing_symbols = bool(self.config.get("extend_to_trailing_symbols", True))
 
         # 7. 杂项配置
         exclude_kw = self.config.get("exclude_keywords", [])
@@ -165,15 +167,29 @@ class CustomSegmentReplyPlugin(Star):
             return
 
     @staticmethod
-    def _skip_repeated_symbol(text: str, idx: int, symbol: str) -> int:
-        """返回从 idx 开始连续重复 symbol 的总长度"""
+    def _is_symbol_char(ch: str) -> bool:
+        """判断单个字符是否属于符号（标点/符号类）。"""
+        if not ch:
+            return False
+        cat = unicodedata.category(ch)
+        return cat.startswith("P") or cat.startswith("S")
+
+    def _get_split_char_len(self, text: str, idx: int, symbol: str) -> int:
+        """返回从 idx 开始，分隔符应吞掉的总长度。"""
         total_len = len(symbol)
-        while text.startswith(symbol, idx + total_len):
-            total_len += len(symbol)
+        if not self.extend_to_trailing_symbols:
+            return total_len
+
+        # 顺延到连续符号串结尾：只要后面还是符号（而非文字），就继续吞掉
+        while idx + total_len < len(text):
+            next_char = text[idx + total_len]
+            if not self._is_symbol_char(next_char):
+                break
+            total_len += 1
         return total_len
 
     def _split_by_force_symbols(self, text: str) -> List[str]:
-        """按强制分隔符预分段，连续重复的同一符号视为一个整体分隔符"""
+        """按强制分隔符预分段，可将后续连续符号整体并入分隔符。"""
         if not self.force_split_symbols:
             return [text]
         pieces = [text]
@@ -184,7 +200,7 @@ class CustomSegmentReplyPlugin(Star):
                 last_end = 0
                 while i <= len(piece) - len(symbol):
                     if piece.startswith(symbol, i):
-                        rep_len = self._skip_repeated_symbol(piece, i, symbol)
+                        rep_len = self._get_split_char_len(piece, i, symbol)
                         if self.keep_symbol:
                             new_pieces.append(piece[last_end:i + rep_len])
                         else:
@@ -233,7 +249,7 @@ class CustomSegmentReplyPlugin(Star):
                 idx = remaining_text.rfind(symbol, self.min_length, self.max_length)
                 if idx != -1:
                     best_split_index = idx
-                    split_char_len = self._skip_repeated_symbol(remaining_text, idx, symbol)
+                    split_char_len = self._get_split_char_len(remaining_text, idx, symbol)
                     break
 
             if best_split_index == -1:
@@ -244,7 +260,7 @@ class CustomSegmentReplyPlugin(Star):
                         for symbol in self.split_symbols:
                             if remaining_text.startswith(symbol, i):
                                 best_split_index = i
-                                split_char_len = self._skip_repeated_symbol(remaining_text, i, symbol)
+                                split_char_len = self._get_split_char_len(remaining_text, i, symbol)
                                 found = True
                                 break
                         if found:
@@ -258,7 +274,7 @@ class CustomSegmentReplyPlugin(Star):
                         idx = remaining_text.rfind(symbol, 0, self.min_length)
                         if idx != -1:
                             best_split_index = idx
-                            split_char_len = self._skip_repeated_symbol(remaining_text, idx, symbol)
+                            split_char_len = self._get_split_char_len(remaining_text, idx, symbol)
                             break
                     
                     if best_split_index == -1:
