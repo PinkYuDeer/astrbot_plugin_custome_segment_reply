@@ -194,7 +194,7 @@ class CustomSegmentReplyPlugin(Star):
             segments.extend(self._segment_by_length(pre_seg))
         # 短尾合并
         if self.merge_short_tail and len(segments) >= 2:
-            if len(segments[-1]) <= self.short_tail_threshold:
+            if self._logical_len(segments[-1]) <= self.short_tail_threshold:
                 tail = segments.pop()
                 segments[-1] += tail
         return segments
@@ -294,6 +294,21 @@ class CustomSegmentReplyPlugin(Star):
         """判断单个字符是否为标点(P)或符号(S)类 Unicode 字符。"""
         cat = unicodedata.category(ch)
         return cat[0] in ("P", "S")
+
+    @classmethod
+    def _logical_len(cls, text: str) -> int:
+        """计算逻辑长度：连续重复的同一符号字符视为 1 个字符。"""
+        length = 0
+        i = 0
+        while i < len(text):
+            ch = text[i]
+            if cls._is_symbol_char(ch):
+                # 跳过后续相同的符号字符
+                while i + 1 < len(text) and text[i + 1] == ch:
+                    i += 1
+            length += 1
+            i += 1
+        return length
 
     def _get_split_char_len(self, text: str, idx: int, symbol: str) -> int:
         """返回从 idx 开始分隔符应吞掉的总长度（含顺延的连续符号）。"""
