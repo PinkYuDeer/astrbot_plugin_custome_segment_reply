@@ -153,7 +153,6 @@ class CustomSegmentReplyPlugin(Star):
 
             full_segmented_text = "\n\n".join(segments)
             result.chain.clear()
-            event.stop_event()
 
             await self._set_typing(event, True)
             for i, segment in enumerate(segments):
