@@ -78,6 +78,12 @@
         "default": true,
         "hint": "开启后，命中分段符时会继续顺延至最后的连续符号（如“？……”）直到遇到文字；关闭则仅命中的分段符本身。"
     },
+    "protect_paired_symbols": {
+        "description": "成对符号内部不分段",
+        "type": "bool",
+        "default": false,
+        "hint": "开启后，括号/书名号/引号等配对符号内部不进行常规分段（如（...）、《...》、“...”）；到闭合符号后再允许断句。"
+    },
     "exclude_keywords": {
         "description": "无需分段的关键词列表",
         "type": "list",
