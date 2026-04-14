@@ -1,4 +1,13 @@
 {
+    "force_split_symbols": {
+        "description": "绝对硬性分隔符列表",
+        "type": "list",
+        "default": [
+            "\\n\\n",
+            "\\n"
+        ],
+        "hint": "遇到列表中的符号时会直接强制分段，不受字数限制。分段后再对每段分别应用常规断句规则。"
+    },
     "min_length": {
         "description": "单段最小字数",
         "type": "int",

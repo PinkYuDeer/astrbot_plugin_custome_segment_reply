@@ -16,8 +16,19 @@ class CustomSegmentReplyPlugin(Star):
         super().__init__(context)
         # 确保 config 存在
         self.config = config or {}
+
+        # 1. 强制分隔符配置
+        raw_force = self.config.get("force_split_symbols")
+        if not isinstance(raw_force, list) or len(raw_force) == 0:
+            raw_force = []
+        self.force_split_symbols = []
+        for s in raw_force:
+            if isinstance(s, str):
+                cleaned_s = s.replace("\\n", "\n").strip("\r")
+                if cleaned_s:
+                    self.force_split_symbols.append(cleaned_s)
         
-        # 1. 基础字数配置 (带类型安全转换)
+        # 2. 基础字数配置 (带类型安全转换)
         try:
             self.min_length = int(self.config.get("min_length", 20))
             self.max_length = int(self.config.get("max_length", 50))
@@ -28,24 +39,26 @@ class CustomSegmentReplyPlugin(Star):
         if self.min_length > self.max_length:
             self.min_length = self.max_length
             
-        # 2. 超长处理配置
+        # 3. 超长处理配置
         self.allow_exceed_max = bool(self.config.get("allow_exceed_max", True))
+
+        # 4. 绝对硬性截断配置
         try:
             self.hard_max_limit = int(self.config.get("hard_max_limit", 100))
         except (ValueError, TypeError):
             self.hard_max_limit = 100
-            
+
         if self.hard_max_limit < self.max_length:
             self.hard_max_limit = self.max_length + 20
-            
-        # 3. 短尾合并配置
+
+        # 5. 短尾合并配置
         self.merge_short_tail = bool(self.config.get("merge_short_tail", True))
         try:
             self.short_tail_threshold = int(self.config.get("short_tail_threshold", 8))
         except (ValueError, TypeError):
             self.short_tail_threshold = 8
-        
-        # 4. 符号与保留配置 (防呆清洗逻辑)
+
+        # 6. 符号与保留配置 (防呆清洗逻辑)
         raw_symbols = self.config.get("split_symbols")
         if not isinstance(raw_symbols, list) or len(raw_symbols) == 0:
             raw_symbols = [
@@ -63,8 +76,8 @@ class CustomSegmentReplyPlugin(Star):
             self.split_symbols = ["\n\n", "\n", "。", "！", "？"]
 
         self.keep_symbol = bool(self.config.get("keep_symbol", True))
-        
-        # 5. 杂项配置
+
+        # 7. 杂项配置
         exclude_kw = self.config.get("exclude_keywords", [])
         self.exclude_keywords = exclude_kw if isinstance(exclude_kw, list) else []
         
@@ -128,8 +141,43 @@ class CustomSegmentReplyPlugin(Star):
             logger.error(f"本地规则分段异常，发送原消息。失败原因：{str(e)}")
             return
 
+    def _split_by_force_symbols(self, text: str) -> List[str]:
+        """按强制分隔符预分段，保留或丢弃分隔符取决于 keep_symbol 配置"""
+        if not self.force_split_symbols:
+            return [text]
+        pieces = [text]
+        for symbol in self.force_split_symbols:
+            new_pieces = []
+            for piece in pieces:
+                parts = piece.split(symbol)
+                for j, part in enumerate(parts):
+                    if self.keep_symbol and j < len(parts) - 1:
+                        new_pieces.append(part + symbol)
+                    else:
+                        new_pieces.append(part)
+            pieces = new_pieces
+        return [p.strip() for p in pieces if p.strip()]
+
     # ✅ 修复：使用 List[str] 替代 list[str]，完美兼容 Python 3.8
     def segment_text_by_rules(self, text: str) -> List[str]:
+        # 第一步：按强制分隔符预分段
+        pre_segments = self._split_by_force_symbols(text.strip())
+
+        # 第二步：对每个预分段分别应用长度规则分段
+        segments = []
+        for pre_seg in pre_segments:
+            segments.extend(self._segment_by_length(pre_seg))
+
+        # 短尾合并
+        if self.merge_short_tail and len(segments) >= 2:
+            last_seg = segments[-1]
+            if len(last_seg) <= self.short_tail_threshold:
+                tail = segments.pop()
+                segments[-1] = segments[-1] + tail
+
+        return segments
+
+    def _segment_by_length(self, text: str) -> List[str]:
         segments = []
         remaining_text = text.strip()
 
@@ -189,12 +237,6 @@ class CustomSegmentReplyPlugin(Star):
                 if seg:
                     segments.append(seg)
                 remaining_text = remaining_text[best_split_index + split_char_len:].strip()
-
-        if self.merge_short_tail and len(segments) >= 2:
-            last_seg = segments[-1]
-            if len(last_seg) <= self.short_tail_threshold:
-                tail = segments.pop()
-                segments[-1] = segments[-1] + tail
 
         return segments
 
