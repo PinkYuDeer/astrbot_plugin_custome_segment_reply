@@ -302,7 +302,8 @@ class CustomSegmentReplyPlugin(Star):
         if self.delay_type == "smart":
             # 基础间隔：每字数 random.gauss(80ms, 30ms)
             per_char_ms = max(10.0, random.gauss(80.0, 30.0))
-            base_delay = (per_char_ms * len(previous_segment)) / 1000.0
+            # 基础打字间隔作用在“当前待发句”之前
+            base_delay = (per_char_ms * len(current_segment)) / 1000.0
 
             # 符号修正：
             # 1) 每个感叹号（! / ！）减去 100~300ms（作用在“这句话本身”的发送前间隔）
