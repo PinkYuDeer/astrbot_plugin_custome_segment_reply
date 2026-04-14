@@ -141,20 +141,36 @@ class CustomSegmentReplyPlugin(Star):
             logger.error(f"本地规则分段异常，发送原消息。失败原因：{str(e)}")
             return
 
+    @staticmethod
+    def _skip_repeated_symbol(text: str, idx: int, symbol: str) -> int:
+        """返回从 idx 开始连续重复 symbol 的总长度"""
+        total_len = len(symbol)
+        while text.startswith(symbol, idx + total_len):
+            total_len += len(symbol)
+        return total_len
+
     def _split_by_force_symbols(self, text: str) -> List[str]:
-        """按强制分隔符预分段，保留或丢弃分隔符取决于 keep_symbol 配置"""
+        """按强制分隔符预分段，连续重复的同一符号视为一个整体分隔符"""
         if not self.force_split_symbols:
             return [text]
         pieces = [text]
         for symbol in self.force_split_symbols:
             new_pieces = []
             for piece in pieces:
-                parts = piece.split(symbol)
-                for j, part in enumerate(parts):
-                    if self.keep_symbol and j < len(parts) - 1:
-                        new_pieces.append(part + symbol)
+                i = 0
+                last_end = 0
+                while i <= len(piece) - len(symbol):
+                    if piece.startswith(symbol, i):
+                        rep_len = self._skip_repeated_symbol(piece, i, symbol)
+                        if self.keep_symbol:
+                            new_pieces.append(piece[last_end:i + rep_len])
+                        else:
+                            new_pieces.append(piece[last_end:i])
+                        last_end = i + rep_len
+                        i = last_end
                     else:
-                        new_pieces.append(part)
+                        i += 1
+                new_pieces.append(piece[last_end:])
             pieces = new_pieces
         return [p.strip() for p in pieces if p.strip()]
 
@@ -194,8 +210,8 @@ class CustomSegmentReplyPlugin(Star):
                 idx = remaining_text.rfind(symbol, self.min_length, self.max_length)
                 if idx != -1:
                     best_split_index = idx
-                    split_char_len = len(symbol)
-                    break 
+                    split_char_len = self._skip_repeated_symbol(remaining_text, idx, symbol)
+                    break
 
             if best_split_index == -1:
                 if self.allow_exceed_max:
@@ -205,7 +221,7 @@ class CustomSegmentReplyPlugin(Star):
                         for symbol in self.split_symbols:
                             if remaining_text.startswith(symbol, i):
                                 best_split_index = i
-                                split_char_len = len(symbol)
+                                split_char_len = self._skip_repeated_symbol(remaining_text, i, symbol)
                                 found = True
                                 break
                         if found:
@@ -219,7 +235,7 @@ class CustomSegmentReplyPlugin(Star):
                         idx = remaining_text.rfind(symbol, 0, self.min_length)
                         if idx != -1:
                             best_split_index = idx
-                            split_char_len = len(symbol)
+                            split_char_len = self._skip_repeated_symbol(remaining_text, idx, symbol)
                             break
                     
                     if best_split_index == -1:
