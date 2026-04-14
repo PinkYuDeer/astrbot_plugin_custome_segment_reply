@@ -150,7 +150,9 @@ class CustomSegmentReplyPlugin(Star):
             
             for i, segment in enumerate(segments):
                 if i > 0:
-                    delay = self._calculate_delay(segment)
+                    prev_segment = segments[i - 1]
+                    curr_segment = segments[i]
+                    delay = self._calculate_delay(prev_segment, curr_segment)
                     await asyncio.sleep(delay)
                 await event.send(MessageChain().message(segment))
             
@@ -289,29 +291,29 @@ class CustomSegmentReplyPlugin(Star):
         value = random.gauss(mean, std)
         return max(min_v, min(max_v, value))
 
-    def _calculate_delay(self, segment: str) -> float:
+    def _calculate_delay(self, previous_segment: str, current_segment: str) -> float:
         """根据配置计算当前分段发送前延迟（单位：秒）。"""
         if self.delay_type == "fixed":
             return self.fixed_delay_seconds
 
         if self.delay_type == "per_char":
-            return max(0.0, self.per_char_delay_seconds * len(segment))
+            return max(0.0, self.per_char_delay_seconds * len(previous_segment))
 
         if self.delay_type == "smart":
             # 基础间隔：每字数 random.gauss(80ms, 30ms)
             per_char_ms = max(10.0, random.gauss(80.0, 30.0))
-            base_delay = (per_char_ms * len(segment)) / 1000.0
+            base_delay = (per_char_ms * len(previous_segment)) / 1000.0
 
             # 符号修正：
-            # 1) 每个感叹号（! / ！）减去 100~300ms（正态并裁剪）
-            exclam_count = segment.count("!") + segment.count("！")
+            # 1) 每个感叹号（! / ！）减去 100~300ms（作用在“这句话本身”的发送前间隔）
+            exclam_count = current_segment.count("!") + current_segment.count("！")
             exclam_reduce = 0.0
             for _ in range(exclam_count):
                 exclam_reduce += self._gauss_clamped(0.1, 0.3)
 
-            # 2) 省略号/破折号（... / 。。。 / …… / —— 等）每组增加 400~800ms（正态并裁剪）
+            # 2) 省略号/破折号（... / 。。。 / …… / —— 等）每组增加 400~800ms（作用在“当前句之后”间隔）
             pause_like_pattern = r"(?:\.{3,}|。{3,}|…{2,}|-{2,}|—{2,}|－{2,})"
-            pause_like_count = len(re.findall(pause_like_pattern, segment))
+            pause_like_count = len(re.findall(pause_like_pattern, previous_segment))
             pause_add = 0.0
             for _ in range(pause_like_count):
                 pause_add += self._gauss_clamped(0.4, 0.8)
